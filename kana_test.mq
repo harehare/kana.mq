@@ -1,0 +1,299 @@
+import "kana"
+| include "test"
+
+# -- ASCII: to_fullwidth / to_halfwidth --
+
+# @parametrize([
+# ["0123456789", "０１２３４５６７８９"],
+# ["ABCXYZ", "ＡＢＣＸＹＺ"],
+# ["abcxyz", "ａｂｃｘｙｚ"],
+# ["!\"#$%&'()*+,-./", "！＂＃＄％＆＇（）＊＋，－．／"],
+# [":;<=>?@[\\]^_`{|}~", "：；＜＝＞？＠［＼］＾＿｀｛｜｝～"],
+# [" ", "　"],
+# ["a b", "ａ　ｂ"],
+# ["¢£¬¯¦¥₩", "￠￡￢￣￤￥￦"],
+# ["Hello, World! 2026", "Ｈｅｌｌｏ，　Ｗｏｒｌｄ！　２０２６"],
+# ])
+def test_ascii_conversion(half, full):
+  assert_eq(kana::to_fullwidth(half, "ascii"), full)
+  | assert_eq(kana::to_halfwidth(full, "ascii"), half)
+end
+
+# @parametrize([
+# ["0123456789"],
+# ["Hello, World! 2026"],
+# ["a b\tc\nd"],
+# ["`code` and [link](https://example.com)"],
+# ["¢£¬¯¦¥₩"],
+# ["漢字 and かな 123"],
+# [""],
+# ])
+def test_ascii_round_trip(x):
+  assert_eq(kana::to_halfwidth(kana::to_fullwidth(x, "ascii"), "ascii"), x)
+end
+
+# @parametrize([["０１２３"], ["ＡＢＣ　ａｂｃ"], ["！＂＃＄％"], ["￠￡￢￣￤￥￦"]])
+def test_ascii_round_trip_from_fullwidth(x):
+  assert_eq(kana::to_fullwidth(kana::to_halfwidth(x, "ascii"), "ascii"), x)
+end
+
+# The ASCII tables match the Unicode compatibility mapping of U+FF01-FF5E.
+def test_ascii_matches_nfkc():
+  let fullwidth = implode(range(65281, 65374))
+  | assert_eq(kana::to_halfwidth(fullwidth, "ascii"), unicode_normalize(fullwidth, "nfkc"))
+  | assert_eq(kana::to_halfwidth("　", "ascii"), unicode_normalize("　", "nfkc"))
+  | assert_eq(kana::to_halfwidth("￠￡￢￣￤￥￦", "ascii"), "¢£¬¯¦¥₩")
+end
+
+# -- Kana: halfwidth to fullwidth --
+
+# @parametrize([
+# ["ｱｲｳｴｵ", "アイウエオ"],
+# ["ｶｷｸｹｺ", "カキクケコ"],
+# ["ｻｼｽｾｿ", "サシスセソ"],
+# ["ﾀﾁﾂﾃﾄ", "タチツテト"],
+# ["ﾅﾆﾇﾈﾉ", "ナニヌネノ"],
+# ["ﾊﾋﾌﾍﾎ", "ハヒフヘホ"],
+# ["ﾏﾐﾑﾒﾓ", "マミムメモ"],
+# ["ﾔﾕﾖ", "ヤユヨ"],
+# ["ﾗﾘﾙﾚﾛ", "ラリルレロ"],
+# ["ﾜｦﾝ", "ワヲン"],
+# ["ｧｨｩｪｫｬｭｮｯ", "ァィゥェォャュョッ"],
+# ["ｺﾝﾆﾁﾊ", "コンニチハ"],
+# ])
+def test_kana_basic(half, full):
+  assert_eq(kana::to_fullwidth(half, "kana"), full)
+  | assert_eq(kana::to_halfwidth(full, "kana"), half)
+end
+
+# @parametrize([
+# ["｡｢｣､･", "。「」、・"],
+# ["ｰ", "ー"],
+# ["ｺｰﾋｰ", "コーヒー"],
+# ["｢ｱｲｳ｣､ｴｵ｡", "「アイウ」、エオ。"],
+# ])
+def test_kana_punctuation_and_long_vowel(half, full):
+  assert_eq(kana::to_fullwidth(half, "kana"), full)
+  | assert_eq(kana::to_halfwidth(full, "kana"), half)
+end
+
+# -- Kana: voiced and semi-voiced marks --
+
+# @parametrize([
+# ["ｶﾞｷﾞｸﾞｹﾞｺﾞ", "ガギグゲゴ"],
+# ["ｻﾞｼﾞｽﾞｾﾞｿﾞ", "ザジズゼゾ"],
+# ["ﾀﾞﾁﾞﾂﾞﾃﾞﾄﾞ", "ダヂヅデド"],
+# ["ﾊﾞﾋﾞﾌﾞﾍﾞﾎﾞ", "バビブベボ"],
+# ["ﾊﾟﾋﾟﾌﾟﾍﾟﾎﾟ", "パピプペポ"],
+# ["ｳﾞ", "ヴ"],
+# ["ﾜﾞ", "ヷ"],
+# ["ｦﾞ", "ヺ"],
+# ["ｶﾞｲﾄﾞ", "ガイド"],
+# ["ｱﾘｶﾞﾄｳ", "アリガトウ"],
+# ["ｷﾞﾀｰ ﾊﾟｿｺﾝ ﾋﾞｰﾙ", "ギター パソコン ビール"],
+# ])
+def test_kana_voiced_marks(half, full):
+  assert_eq(kana::to_fullwidth(half, "kana"), full)
+  | assert_eq(kana::to_halfwidth(full, "kana"), half)
+end
+
+# @parametrize([
+# ["ガ", "ｶﾞ"],
+# ["パ", "ﾊﾟ"],
+# ["ヴ", "ｳﾞ"],
+# ["ヷ", "ﾜﾞ"],
+# ["ヺ", "ｦﾞ"],
+# ["ガギグゲゴ", "ｶﾞｷﾞｸﾞｹﾞｺﾞ"],
+# ["ダヂヅデド", "ﾀﾞﾁﾞﾂﾞﾃﾞﾄﾞ"],
+# ["バビブベボ", "ﾊﾞﾋﾞﾌﾞﾍﾞﾎﾞ"],
+# ["パピプペポ", "ﾊﾟﾋﾟﾌﾟﾍﾟﾎﾟ"],
+# ["ガイド", "ｶﾞｲﾄﾞ"],
+# ])
+def test_kana_decompose_voiced(full, half):
+  assert_eq(kana::to_halfwidth(full, "kana"), half)
+end
+
+# A mark that has nothing to combine with becomes the standalone fullwidth mark.
+# @parametrize([
+# ["ｱﾞ", "ア゛"],
+# ["ｶﾟ", "カ゜"],
+# ["ﾞ", "゛"],
+# ["ﾟ", "゜"],
+# ["ｶﾞﾞ", "ガ゛"],
+# ["ﾊﾟﾟ", "パ゜"],
+# ["ｰﾞ", "ー゛"],
+# ["ﾞｶ", "゛カ"],
+# ])
+def test_kana_stray_marks(half, full):
+  assert_eq(kana::to_fullwidth(half, "kana"), full)
+  | assert_eq(kana::to_halfwidth(full, "kana"), half)
+end
+
+# Voiced marks next to non-kana characters are not composed.
+# @parametrize([["Aﾞ", "A゛"], ["ｶ ﾞ", "カ ゛"], ["ｶ\nﾞ", "カ\n゛"]])
+def test_kana_marks_do_not_cross_other_characters(half, expected):
+  assert_eq(kana::to_fullwidth(half, "kana"), expected)
+end
+
+# Combining marks (U+3099, U+309A) are handled after NFC normalization.
+# @parametrize([["ガ", "ｶﾞ"], ["パ", "ﾊﾟ"], ["ヴ", "ｳﾞ"]])
+def test_kana_combining_marks_after_nfc(s, expected):
+  assert_eq(kana::to_halfwidth(unicode_normalize(s, "nfc"), "kana"), expected)
+end
+
+# -- Table coverage against the Unicode compatibility mapping --
+
+def test_kana_matches_nfkc():
+  let half = implode(range(65377, 65437))
+  | let full = kana::to_fullwidth(half, "kana")
+  | assert_eq(full, unicode_normalize(half, "nfkc"))
+  | assert_eq(kana::to_halfwidth(full, "kana"), half)
+end
+
+# @parametrize([
+# ["ｳ"], ["ｶ"], ["ｷ"], ["ｸ"], ["ｹ"], ["ｺ"], ["ｻ"], ["ｼ"], ["ｽ"], ["ｾ"], ["ｿ"],
+# ["ﾀ"], ["ﾁ"], ["ﾂ"], ["ﾃ"], ["ﾄ"], ["ﾊ"], ["ﾋ"], ["ﾌ"], ["ﾍ"], ["ﾎ"], ["ﾜ"], ["ｦ"],
+# ])
+def test_voiced_matches_nfkc(base):
+  let half = base + "ﾞ"
+  | assert_eq(kana::to_fullwidth(half, "kana"), unicode_normalize(half, "nfkc"))
+end
+
+# @parametrize([["ﾊ"], ["ﾋ"], ["ﾌ"], ["ﾍ"], ["ﾎ"]])
+def test_semi_voiced_matches_nfkc(base):
+  let half = base + "ﾟ"
+  | assert_eq(kana::to_fullwidth(half, "kana"), unicode_normalize(half, "nfkc"))
+end
+
+# -- Selecting kinds --
+
+# @parametrize([
+# ["a1ａ１ｱ", "digit", "a１ａ１ｱ"],
+# ["a1ａ１ｱ", "alpha", "ａ1ａ１ｱ"],
+# ["a1 !ｱ", "ascii", "ａ１　！ｱ"],
+# ["a1 !ｱ", "kana", "a1 !ア"],
+# ["a1 !ｱ", "all", "ａ１　！ア"],
+# ["12 ab", "digit", "１２ ab"],
+# ["12 ab", "alpha", "12 ａｂ"],
+# ["ｶﾞ1", "digit", "ｶﾞ１"],
+# ["ｶﾞa", "alpha", "ｶﾞａ"],
+# ["ｶﾞa", "ascii", "ｶﾞａ"],
+# ])
+def test_to_fullwidth_kinds(input, kinds, expected):
+  assert_eq(kana::to_fullwidth(input, kinds), expected)
+end
+
+# @parametrize([
+# ["ａ１Ａ！ア", "digit", "ａ1Ａ！ア"],
+# ["ａ１Ａ！ア", "alpha", "a１A！ア"],
+# ["ａ１Ａ！　ア", "ascii", "a1A! ア"],
+# ["ａ１Ａ！ア", "kana", "ａ１Ａ！ｱ"],
+# ["ａ１Ａ！ア", "all", "a1A!ｱ"],
+# ["ガａ", "digit", "ガａ"],
+# ["ガａ", "alpha", "ガa"],
+# ["ガａ", "ascii", "ガa"],
+# ["ガａ", "kana", "ｶﾞａ"],
+# ["ガａ", "all", "ｶﾞa"],
+# ])
+def test_to_halfwidth_kinds(input, kinds, expected):
+  assert_eq(kana::to_halfwidth(input, kinds), expected)
+end
+
+# @parametrize([
+# ["ABC123 ｶﾞｷﾞｸﾞ ﾊﾟﾋﾟ ｳﾞ ｺｰﾋｰ"],
+# ["漢字とひらがなとｶﾀｶﾅ ABC 123"],
+# ["ﾜﾞｦﾞ ｱﾞ ｡｢ｱ｣､"],
+# ])
+def test_all_round_trip_from_halfwidth(x):
+  assert_eq(kana::to_halfwidth(kana::to_fullwidth(x, "all"), "all"), x)
+end
+
+# @parametrize([
+# ["Ｈｅｌｌｏ　Ｗｏｒｌｄ！　２０２６　ガギ、「アイウ」"],
+# ["ＡＢＣ　ヴ　ヷヺ　パピ"],
+# ])
+def test_all_round_trip_from_fullwidth(x):
+  assert_eq(kana::to_fullwidth(kana::to_halfwidth(x, "all"), "all"), x)
+end
+
+# -- Characters that are never changed --
+
+# @parametrize([
+# ["あいうえお"],
+# ["がぎぐげごぱぴぷぺぽ"],
+# ["漢字変換"],
+# ["ヰヱヮヵヶヽヾ"],
+# ["㈱㌔℡①"],
+# ["éüñ"],
+# ["😀🎉"],
+# ["\n\t"],
+# ])
+def test_other_characters_unchanged(s):
+  assert_eq(kana::to_fullwidth(s, "all"), s)
+  | assert_eq(kana::to_halfwidth(s, "all"), s)
+end
+
+# Unlike NFKC, no symbol is expanded.
+def test_no_nfkc_expansion():
+  assert_eq(kana::to_halfwidth("㈱ＡＢＣ", "all"), "㈱ABC")
+  | assert_eq(kana::to_fullwidth("㈱ABC", "all"), "㈱ＡＢＣ")
+end
+
+# @parametrize([["あ漢ア1", "digit", "あ漢ア１"], ["あ漢ｱ1", "kana", "あ漢ア1"]])
+def test_mixed_with_cjk(s, kinds, expected):
+  assert_eq(kana::to_fullwidth(s, kinds), expected)
+end
+
+# -- Empty and non-target input --
+
+# @parametrize([["ascii"], ["digit"], ["alpha"], ["kana"], ["all"]])
+def test_empty_string(kinds):
+  assert_eq(kana::to_fullwidth("", kinds), "")
+  | assert_eq(kana::to_halfwidth("", kinds), "")
+end
+
+# @parametrize([
+# ["漢字かな", "all"],
+# ["ａｂｃ", "kana"],
+# ["abc", "kana"],
+# ["ｱｲｳ", "ascii"],
+# ["ｱｲｳ", "digit"],
+# ["abc", "digit"],
+# ["123", "alpha"],
+# ])
+def test_to_fullwidth_without_target_characters(s, kinds):
+  assert_eq(kana::to_fullwidth(s, kinds), s)
+end
+
+# @parametrize([
+# ["漢字かな", "all"],
+# ["abc", "kana"],
+# ["ａｂｃ", "kana"],
+# ["ｱｲｳ", "ascii"],
+# ["アイウ", "digit"],
+# ["ａｂｃ", "digit"],
+# ["１２３", "alpha"],
+# ])
+def test_to_halfwidth_without_target_characters(s, kinds):
+  assert_eq(kana::to_halfwidth(s, kinds), s)
+end
+
+# -- Markdown syntax characters are converted as plain characters --
+
+# @parametrize([["＊強調＊", "*強調*"], ["＃　見出し", "# 見出し"], ["［リンク］（ｈｔｔｐ）", "[リンク](http)"]])
+def test_markdown_syntax_characters_are_converted(s, expected):
+  assert_eq(kana::to_halfwidth(s, "ascii"), expected)
+end
+
+# -- Invalid kinds --
+
+# @parametrize([[""], ["bogus"], ["ASCII"], ["digits"], ["ascii,kana"], [None], [1], [["all"]]])
+def test_invalid_kinds(kinds):
+  assert_eq(try: kana::to_fullwidth("a", kinds) catch: "error", "error")
+  | assert_eq(try: kana::to_halfwidth("ａ", kinds) catch: "error", "error")
+end
+
+def test_invalid_kinds_on_empty_string():
+  assert_eq(try: kana::to_fullwidth("", "bogus") catch: "error", "error")
+  | assert_eq(try: kana::to_halfwidth("", "bogus") catch: "error", "error")
+end

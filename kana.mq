@@ -1,0 +1,153 @@
+# Fullwidth/halfwidth conversion in mq
+#
+# Converts only the character classes you select. Unlike `unicode_normalize(s, "nfkc")`,
+# it works in both directions and never expands symbols such as `㈱`.
+#
+# Inputs with combining voiced marks (U+3099, U+309A) should be passed through
+# `unicode_normalize(s, "nfc")` first.
+#
+# The functions only transform strings. Converting fullwidth Markdown syntax characters
+# (e.g. `＊`, `＃`) to halfwidth can make them be parsed as syntax when the result is
+# re-parsed as Markdown.
+
+let _KINDS = "ascii, digit, alpha, kana, all"
+
+# Halfwidth/fullwidth katakana as parallel strings, in the order of U+FF61-FF9F.
+| let _KANA_H = "｡｢｣､･ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝﾞﾟ"
+| let _KANA_F = "。「」、・ヲァィゥェォャュョッーアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン゛゜"
+
+# Voiced and semi-voiced kana: halfwidth base character, then the composed fullwidth form.
+| let _VOICED_H = "ｳｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾊﾋﾌﾍﾎﾜｦ"
+| let _VOICED_F = "ヴガギグゲゴザジズゼゾダヂヅデドバビブベボヷヺ"
+| let _SEMI_H = "ﾊﾋﾌﾍﾎ"
+| let _SEMI_F = "パピプペポ"
+
+# Halfwidth/fullwidth currency and symbol forms outside the U+0021-007E offset.
+| let _SIGN_H = "¢£¬¯¦¥₩ "
+| let _SIGN_F = "￠￡￢￣￤￥￦　"
+
+| def _pairs(keys, values):
+    from_entries(zip(chars(keys), chars(values)))
+  end
+
+# Like `_pairs`, with each character of `keys` mapped to its character plus `mark`.
+| def _pairs_with_mark(keys, values, mark):
+    from_entries(zip(chars(keys), map(chars(values), fn(c): c + mark;)))
+  end
+
+# Fullwidth form of the halfwidth code point range [from, to] (offset 0xFEE0).
+| def _ascii_range_f(from, to):
+    implode(map(range(from, to), fn(cp): cp + 65248;))
+  end
+
+| def _ascii_range_h(from, to):
+    implode(range(from, to))
+  end
+
+| def _ascii_pairs(from, to):
+    _pairs(_ascii_range_h(from, to), _ascii_range_f(from, to))
+  end
+
+| let _H2F_DIGIT = _ascii_pairs(48, 57)
+| let _H2F_ALPHA = _ascii_pairs(65, 90) + _ascii_pairs(97, 122)
+| let _H2F_ASCII = _ascii_pairs(33, 126) + _pairs(_SIGN_H, _SIGN_F)
+| let _H2F_KANA = _pairs(_KANA_H, _KANA_F)
+| let _H2F_ALL = _H2F_ASCII + _H2F_KANA
+
+# Dakuten and handakuten composition: halfwidth base character to composed fullwidth character.
+| let _VOICED = _pairs(_VOICED_H, _VOICED_F)
+| let _SEMI = _pairs(_SEMI_H, _SEMI_F)
+
+# Fullwidth to halfwidth. Voiced kana decompose into a base character and a mark.
+| let _F2H_DIGIT = _pairs(_ascii_range_f(48, 57), _ascii_range_h(48, 57))
+| let _F2H_ALPHA = _pairs(_ascii_range_f(65, 90), _ascii_range_h(65, 90)) + _pairs(_ascii_range_f(97, 122), _ascii_range_h(97, 122))
+| let _F2H_ASCII = _pairs(_ascii_range_f(33, 126), _ascii_range_h(33, 126)) + _pairs(_SIGN_F, _SIGN_H)
+| let _F2H_KANA = _pairs(_KANA_F, _KANA_H)
+    + _pairs_with_mark(_VOICED_F, _VOICED_H, "ﾞ")
+    + _pairs_with_mark(_SEMI_F, _SEMI_H, "ﾟ")
+| let _F2H_ALL = _F2H_ASCII + _F2H_KANA
+
+| let _H2F = {"ascii": _H2F_ASCII, "digit": _H2F_DIGIT, "alpha": _H2F_ALPHA, "kana": _H2F_KANA, "all": _H2F_ALL}
+| let _F2H = {"ascii": _F2H_ASCII, "digit": _F2H_DIGIT, "alpha": _F2H_ALPHA, "kana": _F2H_KANA, "all": _F2H_ALL}
+
+| def _table(tables, kinds, name):
+    let table = get(tables, kinds)
+    | if (is_none(table)):
+        error(name + ": invalid kinds `" + to_string(kinds) + "` (expected one of: " + _KINDS + ")")
+      else:
+        table
+  end
+
+| def _convert(s, table):
+    join(map(chars(s), fn(c): get_or(table, c, c);), "")
+  end
+
+# Halfwidth to fullwidth with dakuten/handakuten composition. A mark that follows a
+# character it cannot combine with is converted on its own.
+| def _convert_kana(s, table):
+    let cs = chars(s)
+    | let n = len(cs)
+    | if (n == 0):
+        s
+      else:
+        join(map(range(0, n - 1), fn(i):
+          let c = cs[i]
+          | let prev = if (i > 0): cs[i - 1] else: ""
+          | let next = if (i + 1 < n): cs[i + 1] else: ""
+          | if (c == "ﾞ" && get_or(_VOICED, prev, "") != ""):
+              ""
+            elif (c == "ﾟ" && get_or(_SEMI, prev, "") != ""):
+              ""
+            elif (next == "ﾞ" && get_or(_VOICED, c, "") != ""):
+              _VOICED[c]
+            elif (next == "ﾟ" && get_or(_SEMI, c, "") != ""):
+              _SEMI[c]
+            else:
+              get_or(table, c, c);
+        ), "")
+  end
+
+# Converts halfwidth characters to fullwidth.
+#
+# `kinds` selects what to convert:
+# - "ascii": digits, letters, symbols (U+0021-007E, `¢£¬¯¦¥₩`) and space
+# - "digit": 0-9
+# - "alpha": A-Z and a-z
+# - "kana": halfwidth katakana, with `ﾞ` and `ﾟ` composed into the preceding character
+# - "all": "ascii" and "kana"
+#
+# Other characters are returned unchanged. Raises an error for any other `kinds`.
+#
+# Example:
+# ```
+# import "kana" | kana::to_fullwidth("ABC123 ｶﾞｷﾞ", "all")
+# #=> "ＡＢＣ１２３　ガギ"
+# ```
+#
+# Returns: string
+| def to_fullwidth(s, kinds):
+    let table = _table(_H2F, kinds, "kana::to_fullwidth")
+    | if (kinds == "kana" || kinds == "all"):
+        _convert_kana(s, table)
+      else:
+        _convert(s, table)
+  end
+
+# Converts fullwidth characters to halfwidth.
+#
+# `kinds` takes the same values as `to_fullwidth`. With "kana", voiced and semi-voiced
+# katakana are decomposed into a base character and `ﾞ` or `ﾟ`.
+#
+# Other characters, including hiragana and kanji, are returned unchanged. Raises an error
+# for any other `kinds`.
+#
+# Example:
+# ```
+# import "kana" | kana::to_halfwidth("ＡＢＣ１２３　ガギ", "all")
+# #=> "ABC123 ｶﾞｷﾞ"
+# ```
+#
+# Returns: string
+| def to_halfwidth(s, kinds):
+    _convert(s, _table(_F2H, kinds, "kana::to_halfwidth"))
+  end
